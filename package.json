@@ -18,7 +18,7 @@
     ".": "./dist/index.js"
   },
   "bin": {
-    "codex-openai-proxy": "./dist/cli.js"
+    "codex-openai-proxy": "dist/cli.js"
   },
   "files": [
     "dist",
