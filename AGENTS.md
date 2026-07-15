@@ -1,56 +1,103 @@
 # AGENTS.md
 
-## 项目目标
+## Project goal
 
-这是一个本地 OpenAI 兼容代理服务。
+This is a local OpenAI-compatible proxy service. Version 1.2.0:
 
-- 对外暴露 OpenAI 风格接口
-- 对内读取 `~/.codex/auth.json`
-- 使用其中的 `access_token` 和 `account_id`
-- 把请求代理到 `https://chatgpt.com/backend-api/codex/*`
+- exposes OpenAI-style public endpoints;
+- reads `~/.codex/auth.json` internally;
+- uses its `access_token` and `account_id`;
+- proxies requests to `https://chatgpt.com/backend-api/codex/*`;
+- preserves the OpenAI request and error contracts needed by SDK consumers.
 
-当前已实现接口：
+Currently implemented endpoints:
 
+- `GET /health`
 - `GET /v1/models`
 - `POST /v1/responses`
 - `POST /v1/chat/completions`
 
-## 开发约束
+## Development constraints
 
-- 业务代码文件顶部需要保留“实现逻辑说明”注释
-- 默认使用 TypeScript
-- 优先保持最小依赖
-- 如果没有必要，不要引入重量级框架
-- 优先兼容官方 OpenAI SDK 的调用方式
+- Keep an "Implementation notes" comment at the top of business logic files.
+- Use TypeScript by default.
+- Prefer minimal dependencies and dependency-free validation when practical.
+- Do not introduce heavyweight frameworks unless necessary.
+- Prioritize compatibility with official OpenAI SDK request and response shapes.
+- Reject unsupported parameters or schema keywords explicitly; never silently drop or reinterpret them.
+- Preserve unrelated user changes in a dirty worktree.
 
-## 认证约束
+## Authentication and security constraints
 
-- 不实现 OAuth 登录流程
-- 不要求用户提供 `OPENAI_API_KEY`
-- 直接读取 `~/.codex/auth.json`
-- 如果后续增加 token refresh，也应基于本地 auth 文件已有字段处理
+- Do not implement an OAuth login flow.
+- Do not require users to provide `OPENAI_API_KEY`.
+- Read `~/.codex/auth.json` directly.
+- If token refresh is added later, use fields already present in the local auth file.
+- Do not log access tokens, account IDs, authorization headers, file payloads, image payloads, or full prompts.
+- Keep the default listener on `127.0.0.1`; document the security impact before exposing the proxy on another interface.
 
-## 代理约束
+## OpenAI compatibility constraints
 
-- 对外接口尽量贴近 OpenAI 标准格式
-- 对内请求遵循 Codex backend-api 的真实请求格式
-- `chat/completions` 可以通过内部转换映射到 `codex/responses`
-- 流式响应优先保持 SSE 兼容
+- Keep public endpoints as close as possible to the OpenAI standard format.
+- Follow the real Codex backend request format internally.
+- `chat/completions` may be converted internally to `codex/responses`.
+- Preserve `instructions`, `reasoning.effort`, `text.verbosity`, and `text.format` during normalization and model-default application.
+- Preserve supported Responses content parts: `input_text`, PDF `input_file`, and `input_image`.
+- Reject unsupported content-part types with an OpenAI-style 400 error.
+- Validate requested reasoning effort against the selected model catalog before starting a response.
+- Return OpenAI-style error envelopes with meaningful HTTP status and error codes.
+- Preserve rate-limit status and `Retry-After` metadata when supplied upstream.
 
-## 当前边界
+## Structured Outputs and streaming
 
-第一版不覆盖以下能力：
+- `text.format.type=json_schema` is a strict contract, not a prompt hint.
+- Validate the schema before calling the backend and validate the model output before reporting success.
+- The supported schema subset is `type`, `properties`, `required`, `additionalProperties`, `items`, `enum`, `description`, and `title`.
+- Return `unsupported_json_schema` for unsupported keywords instead of ignoring them.
+- Return an upstream/output error when the model produces invalid JSON or violates the schema.
+- Buffer structured streaming responses until validation succeeds. Do not emit HTTP 200 or successful partial SSE output before that validation.
+- Keep ordinary, non-structured SSE responses incremental.
+- Treat upstream `response.incomplete` as an error, not a completed response.
 
-- embeddings
-- images
-- files
-- realtime
-- assistants
+## Current boundaries
 
-## 代码组织建议
+The service does not expose standalone OpenAI endpoints for:
 
-- `src/auth.ts`：本地认证文件读取
-- `src/codex-client.ts`：Codex backend-api 通信
-- `src/transform.ts`：OpenAI 与 Codex 结构转换
-- `src/routes.ts`：对外 HTTP 路由
-- `src/index.ts`：服务启动入口
+- embeddings;
+- image generation or editing;
+- file upload or management;
+- realtime;
+- assistants.
+
+PDF `input_file` and `input_image` content inside `POST /v1/responses` are supported. This does not imply support for `/v1/files` or `/v1/images`.
+
+## Code organization
+
+- `src/auth.ts`: local authentication file reader.
+- `src/codex-client.ts`: model catalog, Codex backend communication, preparation, collection, and SSE transport.
+- `src/transform.ts`: OpenAI/Codex request and response normalization.
+- `src/schema.ts`: supported JSON Schema validation and structured-output validation.
+- `src/errors.ts`: normalized OpenAI-compatible errors and status mapping.
+- `src/types.ts`: public and internal request/event types.
+- `src/routes.ts`: public HTTP routes, early validation, buffering decisions, and error responses.
+- `src/index.ts`: server construction and startup wiring.
+- `src/cli.ts`: command-line entry point and listen/auth-file options.
+- `test/compatibility.test.mjs`: compatibility regression coverage.
+
+## Validation requirements
+
+Run the existing test command after behavior changes:
+
+```bash
+npm test
+```
+
+It compiles TypeScript before running the compatibility tests. Add or update tests when changing:
+
+- request normalization or supported content parts;
+- model defaults and reasoning validation;
+- JSON Schema preservation or validation;
+- HTTP status/error mapping, especially 429 behavior;
+- structured or ordinary streaming behavior.
+
+For integration-sensitive changes, also verify `GET /health`, `GET /v1/models`, one non-streaming Responses request, and the affected multimodal or structured request against a locally running proxy. Tests that call the real backend require a valid local Codex authentication file and must not print its contents.
