@@ -1,6 +1,8 @@
-[English](./README.md) | [简体中文](./README.zh-CN.md)
-
 # codex-openai-proxy
+
+> Maintained fork of [thkdog/codex-openai-proxy](https://github.com/thkdog/codex-openai-proxy),
+> originally created by [shenyi (thkdog)](https://github.com/thkdog). This fork preserves the
+> original work and adds updated Codex backend compatibility and OpenAI-compatible behavior.
 
 A local OpenAI-compatible proxy that reuses local Codex / ChatGPT auth state and forwards requests to `https://chatgpt.com/backend-api/codex/*`.
 
@@ -12,6 +14,28 @@ Currently supported:
 - `GET /v1/models`
 - `POST /v1/responses`
 - `POST /v1/chat/completions`
+
+## Codex compatibility
+
+Version 1.2.0 tracks the Codex CLI 0.144.1 backend protocol. It uses the current authenticated
+WebSocket transport, request headers, model catalog, and model-specific base instructions. The
+default model is `gpt-5.6-sol`; use `GET /v1/models` to see the models available to your account.
+
+### Supported Responses features
+
+- streaming and non-streaming Responses;
+- `reasoning.effort` validated against the selected model catalog;
+- `input_text`, PDF `input_file`, and `input_image` content parts;
+- `text.verbosity`;
+- strict `text.format.type=json_schema` Structured Outputs;
+- OpenAI-style error envelopes and HTTP status codes before streaming starts;
+- structured SSE errors for failures after streaming starts.
+
+Structured responses are buffered until their JSON Schema is validated. This intentionally delays
+their SSE deltas: invalid JSON is returned as `json_schema_validation_failed`, never as a successful
+partial response. The dependency-free validator supports the schema subset used by this proxy:
+`type`, `properties`, `required`, `additionalProperties`, `items`, `enum`, `description`, and
+`title`. Unsupported keywords fail with `unsupported_json_schema` instead of being ignored.
 
 ## Quick Start
 
@@ -30,7 +54,7 @@ ls ~/.codex/auth.json
 ### 2. Run with npx
 
 ```bash
-npx @thkdog/codex-openai-proxy
+npx @acba/codex-openai-proxy
 ```
 
 Default listen address:
@@ -62,7 +86,7 @@ This project uses command-line arguments only and does not read environment vari
 Show help:
 
 ```bash
-npx @thkdog/codex-openai-proxy --help
+npx @acba/codex-openai-proxy --help
 ```
 
 Available options:
@@ -74,25 +98,25 @@ Available options:
 Examples:
 
 ```bash
-npx @thkdog/codex-openai-proxy --port 9000
+npx @acba/codex-openai-proxy --port 9000
 ```
 
 ```bash
-npx @thkdog/codex-openai-proxy --host 0.0.0.0 --port 9000
+npx @acba/codex-openai-proxy --host 0.0.0.0 --port 9000
 ```
 
 ```bash
-npx @thkdog/codex-openai-proxy --auth-file ~/.codex/auth.json
+npx @acba/codex-openai-proxy --auth-file ~/.codex/auth.json
 ```
 
 ```bash
-npx @thkdog/codex-openai-proxy --host 0.0.0.0 --port 9000 --auth-file ~/.codex/auth.json
+npx @acba/codex-openai-proxy --host 0.0.0.0 --port 9000 --auth-file ~/.codex/auth.json
 ```
 
 You can also install it globally:
 
 ```bash
-npm install -g @thkdog/codex-openai-proxy
+npm install -g @acba/codex-openai-proxy
 codex-openai-proxy --port 9000
 ```
 
@@ -124,7 +148,7 @@ Non-streaming `chat/completions`:
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "gpt-5-codex",
+    "model": "gpt-5.6-sol",
     "messages": [
       { "role": "user", "content": "Reply with exactly ok" }
     ]
@@ -137,7 +161,7 @@ Streaming `chat/completions`:
 curl -N http://127.0.0.1:8787/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "gpt-5-codex",
+    "model": "gpt-5.6-sol",
     "stream": true,
     "messages": [
       { "role": "user", "content": "Reply with exactly ok" }
@@ -151,7 +175,7 @@ Non-streaming `responses`:
 curl http://127.0.0.1:8787/v1/responses \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "gpt-5-codex",
+    "model": "gpt-5.6-sol",
     "input": [
       {
         "type": "message",
@@ -162,6 +186,42 @@ curl http://127.0.0.1:8787/v1/responses \
       }
     ]
   }'
+```
+
+Structured `responses`:
+
+```bash
+curl http://127.0.0.1:8787/v1/responses \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "gpt-5.6-luna",
+    "input": "Return a valid result object.",
+    "text": {
+      "format": {
+        "type": "json_schema",
+        "name": "result",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": { "type": "string", "enum": ["completed"] }
+          },
+          "required": ["status"]
+        }
+      }
+    }
+  }'
+```
+
+PDF input uses the standard data URL shape:
+
+```json
+{
+  "type": "input_file",
+  "filename": "evidence.pdf",
+  "file_data": "data:application/pdf;base64,..."
+}
 ```
 
 ## OpenAI SDK Example
@@ -183,7 +243,7 @@ const client = new OpenAI({
 });
 
 const result = await client.chat.completions.create({
-  model: "gpt-5-codex",
+  model: "gpt-5.6-sol",
   messages: [
     { role: "user", content: "Reply with exactly ok" },
   ],
@@ -203,12 +263,83 @@ const client = new OpenAI({
 });
 
 const result = await client.responses.create({
-  model: "gpt-5-codex",
+  model: "gpt-5.6-sol",
   input: "Reply with exactly ok",
 });
 
 console.log(result.output_text);
 ```
+
+## Reasoning effort
+
+Use the standard Responses API `reasoning.effort` field:
+
+```ts
+const result = await client.responses.create({
+  model: "gpt-5.6-luna",
+  reasoning: { effort: "xhigh" },
+  input: "Solve this difficult problem.",
+});
+```
+
+For Chat Completions, use `reasoning_effort`:
+
+```ts
+const result = await client.chat.completions.create({
+  model: "gpt-5.6-luna",
+  reasoning_effort: "high",
+  messages: [{ role: "user", content: "Solve this difficult problem." }],
+});
+```
+
+Codex 0.144.1 exposes `low`, `medium`, `high`, `xhigh`, and `max` for
+`gpt-5.6-luna`. A fully non-reasoning mode is not available; use `low` for the lightest reasoning.
+
+## iGovTI evidence evaluation
+
+The iGovTI provider can use this proxy without an API key:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
+```
+
+Recommended evaluator route:
+
+```json
+{
+  "provider": "openai",
+  "model": "gpt-5.6-luna",
+  "model_key": "gpt-5.6-luna",
+  "reasoning": "high",
+  "pdf2md": false,
+  "docx2html": false
+}
+```
+
+The proxy preserves the nested JSON Schema used by manager-comments temporal reassessments and
+validates the completed output before releasing it to the client.
+
+## Error behavior
+
+Errors use the OpenAI-compatible envelope:
+
+```json
+{
+  "error": {
+    "message": "...",
+    "type": "rate_limit_error",
+    "code": "rate_limit_exceeded"
+  }
+}
+```
+
+Invalid models and reasoning levels return HTTP 400. Authentication failures return 401, rate
+limits return 429 when known before streaming, upstream timeouts return 504, and invalid structured
+model output returns 502. Once SSE headers have been sent, the same status is included in a
+structured `type=error` event.
+
+The service logs request metadata through Fastify but must not log access tokens, account IDs,
+auth file contents, full prompts, data URLs, or attachment contents.
 
 ## Troubleshooting
 

@@ -1,8 +1,8 @@
 /*
- * 实现逻辑说明：
- * 这里负责解析和读取 ChatGPT/Codex 登录态文件，
- * 默认使用 ~/.codex/auth.json，也支持由启动入口通过命令行参数传入自定义路径，
- * 并统一校验 access_token/account_id 是否齐全，供 backend-api 认证复用。
+ * Implementation notes:
+ * Reads and parses the ChatGPT/Codex authentication file. It defaults to ~/.codex/auth.json,
+ * accepts a custom path from the CLI, and validates the access_token/account_id pair used by the
+ * backend API client.
  */
 
 import fs from "node:fs";
@@ -45,7 +45,7 @@ export function validateCodexAuthFile(authFilePath?: string) {
   const authPath = resolveCodexAuthFilePath(authFilePath);
 
   if (!fs.existsSync(authPath)) {
-    throw new Error(`认证文件不存在: ${authPath}`);
+    throw new Error(`Authentication file does not exist: ${authPath}`);
   }
 
   const raw = fs.readFileSync(authPath, "utf8");
@@ -54,14 +54,14 @@ export function validateCodexAuthFile(authFilePath?: string) {
   try {
     parsed = JSON.parse(raw) as RawAuthFile;
   } catch {
-    throw new Error(`认证文件不是合法 JSON: ${authPath}`);
+    throw new Error(`Authentication file is not valid JSON: ${authPath}`);
   }
 
   const accessToken = parsed.tokens?.access_token;
   const accountId = parsed.tokens?.account_id;
 
   if (!accessToken || !accountId) {
-    throw new Error(`认证文件缺少 access_token 或 account_id: ${authPath}`);
+    throw new Error(`Authentication file is missing access_token or account_id: ${authPath}`);
   }
 
   return {

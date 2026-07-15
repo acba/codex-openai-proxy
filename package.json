@@ -1,8 +1,17 @@
 {
-  "name": "@thkdog/codex-openai-proxy",
-  "version": "1.0.1",
+  "name": "@acba/codex-openai-proxy",
+  "version": "1.2.0",
   "description": "Use local Codex auth.json to expose an OpenAI-compatible proxy server",
   "license": "MIT",
+  "author": {
+    "name": "shenyi",
+    "email": "thkdog@hotmail.com"
+  },
+  "contributors": [
+    {
+      "name": "acba"
+    }
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -24,24 +33,27 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thkdog/codex-openai-proxy.git"
+    "url": "git+https://github.com/acba/codex-openai-proxy.git"
   },
-  "homepage": "https://github.com/thkdog/codex-openai-proxy#readme",
+  "homepage": "https://github.com/acba/codex-openai-proxy#readme",
   "bugs": {
-    "url": "https://github.com/thkdog/codex-openai-proxy/issues"
+    "url": "https://github.com/acba/codex-openai-proxy/issues"
   },
   "scripts": {
     "dev": "tsx watch src/cli.ts",
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
     "start": "node dist/cli.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "commander": "^14.0.3",
-    "fastify": "^5.2.1"
+    "fastify": "^5.2.1",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.4",
     "typescript": "^5.8.2"
   }

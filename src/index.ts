@@ -1,8 +1,8 @@
 /*
- * 实现逻辑说明：
- * 这里收敛服务启动能力，负责根据外部传入的启动配置做认证文件自检、
- * 初始化 Fastify、注册 OpenAI 兼容路由，并在启动成功后输出清晰的接入说明，
- * 供 CLI 入口和后续可能的程序化调用复用同一套启动逻辑。
+ * Implementation notes:
+ * Centralizes server startup: validates the configured authentication file, initializes Fastify,
+ * registers the OpenAI-compatible routes, and prints connection details. The CLI and future
+ * programmatic callers share this startup path.
  */
 
 import Fastify from "fastify";
@@ -21,18 +21,18 @@ function printStartupSummary(options: StartServerOptions) {
   const serviceUrl = `http://${options.host}:${options.port}`;
 
   console.log("");
-  console.log("codex-openai-proxy 已启动");
-  console.log(`服务地址: ${serviceUrl}`);
-  console.log(`认证文件: ${options.authFile}`);
-  console.log(`健康检查: ${serviceUrl}/health`);
-  console.log(`模型列表: ${serviceUrl}/v1/models`);
+  console.log("codex-openai-proxy is running");
+  console.log(`Service URL: ${serviceUrl}`);
+  console.log(`Authentication file: ${options.authFile}`);
+  console.log(`Health check: ${serviceUrl}/health`);
+  console.log(`Model list: ${serviceUrl}/v1/models`);
   console.log(`OpenAI baseURL: ${serviceUrl}/v1`);
   console.log("");
-  console.log("快速验证:");
+  console.log("Quick verification:");
   console.log(`curl ${serviceUrl}/health`);
   console.log(`curl ${serviceUrl}/v1/models`);
   console.log("");
-  console.log("OpenAI SDK 配置:");
+  console.log("OpenAI SDK configuration:");
   console.log(`baseURL = "${serviceUrl}/v1"`);
   console.log('apiKey = "dummy"');
   console.log("");
