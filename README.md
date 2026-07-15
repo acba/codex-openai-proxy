@@ -54,7 +54,7 @@ ls ~/.codex/auth.json
 ### 2. Run with npx
 
 ```bash
-npx @acba/codex-openai-proxy
+npx @abenvenuto/codex-openai-proxy
 ```
 
 Default listen address:
@@ -86,7 +86,7 @@ This project uses command-line arguments only and does not read environment vari
 Show help:
 
 ```bash
-npx @acba/codex-openai-proxy --help
+npx @abenvenuto/codex-openai-proxy --help
 ```
 
 Available options:
@@ -98,25 +98,25 @@ Available options:
 Examples:
 
 ```bash
-npx @acba/codex-openai-proxy --port 9000
+npx @abenvenuto/codex-openai-proxy --port 9000
 ```
 
 ```bash
-npx @acba/codex-openai-proxy --host 0.0.0.0 --port 9000
+npx @abenvenuto/codex-openai-proxy --host 0.0.0.0 --port 9000
 ```
 
 ```bash
-npx @acba/codex-openai-proxy --auth-file ~/.codex/auth.json
+npx @abenvenuto/codex-openai-proxy --auth-file ~/.codex/auth.json
 ```
 
 ```bash
-npx @acba/codex-openai-proxy --host 0.0.0.0 --port 9000 --auth-file ~/.codex/auth.json
+npx @abenvenuto/codex-openai-proxy --host 0.0.0.0 --port 9000 --auth-file ~/.codex/auth.json
 ```
 
 You can also install it globally:
 
 ```bash
-npm install -g @acba/codex-openai-proxy
+npm install -g @abenvenuto/codex-openai-proxy
 codex-openai-proxy --port 9000
 ```
 

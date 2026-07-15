@@ -1,5 +1,5 @@
 {
-  "name": "@acba/codex-openai-proxy",
+  "name": "@abenvenuto/codex-openai-proxy",
   "version": "1.2.0",
   "description": "Use local Codex auth.json to expose an OpenAI-compatible proxy server",
   "license": "MIT",
