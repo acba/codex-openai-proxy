@@ -9,6 +9,7 @@ import test from "node:test";
 
 import { buildCodexRequestForModel, CODEX_CLIENT_VERSION } from "../dist/codex-client.js";
 import { normalizeProxyError } from "../dist/errors.js";
+import { createProxyServer, DEFAULT_BODY_LIMIT_BYTES } from "../dist/index.js";
 import { validateStructuredOutput } from "../dist/schema.js";
 import {
   buildCodexResponsesRequestFromChatCompletions,
@@ -19,6 +20,32 @@ import {
 test("uses the Codex 0.144.1 defaults", () => {
   assert.equal(CODEX_CLIENT_VERSION, "0.144.1");
   assert.equal(DEFAULT_MODEL, "gpt-5.6-sol");
+});
+
+test("accepts a 12 MiB Responses JSON body for Base64 file inputs", async () => {
+  assert.equal(DEFAULT_BODY_LIMIT_BYTES, 75 * 1024 * 1024);
+  const app = await createProxyServer({ logger: false });
+
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/responses",
+      headers: { "content-type": "application/json" },
+      payload: {
+        model: "gpt-5.6-luna",
+        input: [{
+          type: "message",
+          role: "user",
+          content: [{ type: "unsupported_test_part", text: "x".repeat(12 * 1024 * 1024) }],
+        }],
+      },
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error.code, "unsupported_content_type");
+  } finally {
+    await app.close();
+  }
 });
 
 test("normalizes string Responses input and moves app instructions to a developer message", () => {
@@ -110,7 +137,7 @@ test("preserves input_file and input_image content parts", () => {
       type: "message",
       role: "user",
       content: [
-        { type: "input_file", filename: "evidence.pdf", file_data: "data:application/pdf;base64,AA==" },
+        { type: "input_file", filename: "evidence.pdf", file_data: "data:application/pdf;base64,AA==", detail: "auto" },
         { type: "input_image", image_url: "data:image/png;base64,AA==" },
         { type: "input_text", text: "Evaluate the attachments." },
       ],
@@ -118,7 +145,7 @@ test("preserves input_file and input_image content parts", () => {
   });
 
   assert.deepEqual(request.input[0].content, [
-    { type: "input_file", filename: "evidence.pdf", file_data: "data:application/pdf;base64,AA==" },
+    { type: "input_file", filename: "evidence.pdf", file_data: "data:application/pdf;base64,AA==", detail: "auto" },
     { type: "input_image", image_url: "data:image/png;base64,AA==" },
     { type: "input_text", text: "Evaluate the attachments." },
   ]);

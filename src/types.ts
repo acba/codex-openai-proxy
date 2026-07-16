@@ -34,6 +34,7 @@ export type OpenAIInputFile = {
   type: "input_file";
   filename: string;
   file_data: string;
+  detail?: "auto" | "low" | "high";
 };
 
 export type OpenAIInputImage = {

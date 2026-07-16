@@ -94,11 +94,22 @@ Available options:
 - `-H, --host <host>`: listen host, default `127.0.0.1`
 - `-p, --port <port>`: listen port, default `8787`
 - `-a, --auth-file <path>`: auth file path, default `~/.codex/auth.json`
+- `--body-limit-mb <mb>`: maximum JSON request body size, default `75` MiB
+
+The larger default body limit is required for Base64 file inputs. OpenAI accepts up to 50 MB of
+files per request, while Base64 expands the binary data by roughly one third. Fastify's original
+1 MiB default is therefore too small for ordinary PDF evidence. Because request bodies are parsed
+in memory, keep the listener on `127.0.0.1` and reduce this limit when large file inputs are not
+needed.
 
 Examples:
 
 ```bash
 npx @abenvenuto/codex-openai-proxy --port 9000
+```
+
+```bash
+npx @abenvenuto/codex-openai-proxy --body-limit-mb 75
 ```
 
 ```bash
