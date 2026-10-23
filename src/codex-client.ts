@@ -1,6 +1,6 @@
 /*
  * Implementation notes:
- * Implements the Codex CLI 0.144.1 protocol for chatgpt.com/backend-api/codex/*. It caches the
+ * Uses the installed Codex CLI version for chatgpt.com/backend-api/codex/*. It caches the
  * model catalog and base instructions, opens an authenticated Responses WebSocket, and exposes
  * upstream results as either event arrays or incremental callbacks.
  */
@@ -12,11 +12,16 @@ import type { FastifyReply } from "fastify";
 import WebSocket, { type RawData } from "ws";
 
 import { readCodexAuth } from "./auth.js";
+import { detectCodexVersion } from "./codex-version.js";
 import { normalizeProxyError, OpenAIProxyError } from "./errors.js";
 import type { CodexEvent, CodexModelEntry, CodexResponsesRequest } from "./types.js";
 
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
-export const CODEX_CLIENT_VERSION = "0.144.1";
+let codexClientVersion: string | undefined;
+
+export function getCodexClientVersion() {
+  return codexClientVersion ??= detectCodexVersion();
+}
 const OPENAI_BETA_RESPONSES_WEBSOCKETS = "responses_websockets=2026-02-06";
 const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
 const CONNECT_TIMEOUT_MS = 15_000;
@@ -29,6 +34,7 @@ function createRequestId() {
 }
 
 export function configureCodexClient(options: { authFilePath?: string }) {
+  codexClientVersion = detectCodexVersion();
   configuredAuthFilePath = options.authFilePath;
   modelsCache = undefined;
 }
@@ -40,8 +46,8 @@ function buildBaseHeaders() {
     Authorization: `Bearer ${auth.accessToken}`,
     "ChatGPT-Account-ID": auth.accountId,
     originator: "codex_cli_rs",
-    version: CODEX_CLIENT_VERSION,
-    "User-Agent": `codex_cli_rs/${CODEX_CLIENT_VERSION} (${process.platform} ${os.release()}; ${process.arch}) codex-openai-proxy`,
+    version: getCodexClientVersion(),
+    "User-Agent": `codex_cli_rs/${getCodexClientVersion()} (${process.platform} ${os.release()}; ${process.arch}) codex-openai-proxy`,
   };
 }
 
@@ -51,7 +57,7 @@ export async function fetchCodexModels(options: { force?: boolean } = {}) {
   }
 
   const response = await fetch(
-    `${CODEX_BASE_URL}/codex/models?client_version=${CODEX_CLIENT_VERSION}`,
+    `${CODEX_BASE_URL}/codex/models?client_version=${getCodexClientVersion()}`,
     {
       headers: buildBaseHeaders(),
       signal: AbortSignal.timeout(MODELS_TIMEOUT_MS),
@@ -126,7 +132,7 @@ export async function prepareCodexRequest(body: CodexResponsesRequest) {
       status: 400,
       type: "invalid_request_error",
       code: "model_not_found",
-      message: `Model unavailable in Codex ${CODEX_CLIENT_VERSION}: ${body.model}`,
+      message: `Model unavailable in Codex ${getCodexClientVersion()}: ${body.model}`,
     });
   }
 

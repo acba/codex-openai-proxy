@@ -8,7 +8,7 @@
 import Fastify from "fastify";
 
 import { resolveCodexAuthFilePath, validateCodexAuthFile } from "./auth.js";
-import { configureCodexClient } from "./codex-client.js";
+import { configureCodexClient, getCodexClientVersion } from "./codex-client.js";
 import { registerRoutes } from "./routes.js";
 
 export const DEFAULT_BODY_LIMIT_MB = 75;
@@ -40,6 +40,7 @@ function printStartupSummary(options: StartServerOptions) {
 
   console.log("");
   console.log("codex-openai-proxy is running");
+  console.log(`Codex CLI version: ${getCodexClientVersion()}`);
   console.log(`Service URL: ${serviceUrl}`);
   console.log(`Authentication file: ${options.authFile}`);
   console.log(`Health check: ${serviceUrl}/health`);

@@ -1,13 +1,18 @@
 /*
  * Test implementation:
- * Validates OpenAI conversions and the compatibility fields sent to the Codex 0.144.1 backend
+ * Validates OpenAI conversions and the compatibility fields sent to the Codex backend
  * without reading local authentication or accessing external services.
  */
 
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
-import { buildCodexRequestForModel, CODEX_CLIENT_VERSION } from "../dist/codex-client.js";
+import { buildCodexRequestForModel, configureCodexClient, fetchCodexModels, getCodexClientVersion } from "../dist/codex-client.js";
+import { detectCodexVersion } from "../dist/codex-version.js";
 import { normalizeProxyError } from "../dist/errors.js";
 import { createProxyServer, DEFAULT_BODY_LIMIT_BYTES } from "../dist/index.js";
 import { validateStructuredOutput } from "../dist/schema.js";
@@ -17,8 +22,7 @@ import {
   DEFAULT_MODEL,
 } from "../dist/transform.js";
 
-test("uses the Codex 0.144.1 defaults", () => {
-  assert.equal(CODEX_CLIENT_VERSION, "0.144.1");
+test("preserves the default model", () => {
   assert.equal(DEFAULT_MODEL, "gpt-5.6-sol");
 });
 
@@ -46,6 +50,68 @@ test("accepts a 12 MiB Responses JSON body for Base64 file inputs", async () => 
   } finally {
     await app.close();
   }
+});
+
+test("detects stable and prerelease versions without invoking a shell", (t) => {
+  let output = "codex-cli 0.162.1\n";
+  t.mock.method(childProcess, "execFileSync", (command, args, options) => {
+    assert.equal(command, "codex");
+    assert.deepEqual(args, ["--version"]);
+    assert.equal(options.shell, undefined);
+    assert.equal(options.timeout, 5000);
+    return output;
+  });
+  assert.equal(detectCodexVersion(), "0.162.1");
+  output = "codex-cli 0.163.0-alpha.1\r\n";
+  assert.equal(detectCodexVersion(), "0.163.0-alpha.1");
+  output = "unexpected output";
+  assert.throws(() => detectCodexVersion(), /Unrecognized codex --version output/);
+});
+
+test("fails clearly when Codex is missing or version detection times out", (t) => {
+  let code = "ENOENT";
+  t.mock.method(childProcess, "execFileSync", () => {
+    throw Object.assign(new Error("private subprocess output"), { code });
+  });
+  for (code of ["ENOENT", "ETIMEDOUT"]) {
+    assert.throws(() => detectCodexVersion(), (error) => {
+      assert.match(error.message, /Ensure codex is available on PATH/);
+      assert.doesNotMatch(error.message, /private subprocess output/);
+      return true;
+    });
+  }
+});
+
+test("uses the detected version in catalog requests and refreshes it on configuration", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-proxy-test-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const authFilePath = path.join(directory, "auth.json");
+  fs.writeFileSync(authFilePath, JSON.stringify({tokens:{access_token:"test-token",account_id:"test-account"}}));
+  let version = "0.162.1";
+  let detections = 0;
+  let requests = 0;
+  t.mock.method(childProcess, "execFileSync", () => {
+    detections++;
+    return `codex-cli ${version}\n`;
+  });
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    requests++;
+    assert.equal(new URL(url).searchParams.get("client_version"), version);
+    assert.equal(options.headers.version, version);
+    assert.ok(options.headers["User-Agent"].startsWith(`codex_cli_rs/${version} `));
+    return new Response(JSON.stringify({models:[{slug:"gpt-6-luna"}]}));
+  });
+  configureCodexClient({authFilePath});
+  assert.equal(getCodexClientVersion(), version);
+  await fetchCodexModels();
+  await fetchCodexModels();
+  assert.equal(detections, 1);
+  assert.equal(requests, 1);
+  version = "0.163.0";
+  configureCodexClient({authFilePath});
+  await fetchCodexModels();
+  assert.equal(detections, 2);
+  assert.equal(requests, 2);
 });
 
 test("normalizes string Responses input and moves app instructions to a developer message", () => {

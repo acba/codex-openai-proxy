@@ -17,9 +17,15 @@ Currently supported:
 
 ## Codex compatibility
 
-Version 1.2.0 tracks the Codex CLI 0.144.1 backend protocol. It uses the current authenticated
-WebSocket transport, request headers, model catalog, and model-specific base instructions. The
+The proxy detects the installed Codex CLI version by running `codex --version` at startup and
+uses that version in the model catalog query and backend request headers. It uses authenticated
+WebSocket transport, the model catalog, and model-specific base instructions. The
 default model is `gpt-5.6-sol`; use `GET /v1/models` to see the models available to your account.
+
+After updating Codex CLI, restart the proxy to detect the new version and refresh its catalog.
+Startup fails with an actionable error if `codex` is missing from `PATH`, takes more than five
+seconds to report its version, or returns an unrecognized version. Detecting the version does
+not automatically adapt the proxy to future changes in the backend protocol.
 
 ### Supported Responses features
 
@@ -41,8 +47,9 @@ partial response. The dependency-free validator supports the schema subset used 
 
 ### 1. Prerequisites
 
-- Node.js 18+
+- Node.js 22.12.0+
 - You are already signed in to Codex / ChatGPT on this machine
+- Codex CLI is installed and `codex --version` works on `PATH`
 - Default auth file path: `~/.codex/auth.json`
 
 You can verify the auth file exists:
@@ -73,6 +80,7 @@ npm run dev
 On startup, the server prints:
 
 - service URL
+- detected Codex CLI version
 - active auth file path
 - health check URL
 - models URL
