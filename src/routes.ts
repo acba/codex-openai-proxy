@@ -4,6 +4,7 @@
  * - /
  * - /health
  * - /v1/models
+ * - /v1/models/reasoning and /v1/models/:model/reasoning (proxy extensions)
  * - /v1/responses
  * - /v1/chat/completions
  * Requests are normalized, proxied to the Codex backend API, and mapped to standard responses.
@@ -17,7 +18,7 @@ import {
   prepareCodexRequest,
   streamCodexResponseToSSE,
 } from "./codex-client.js";
-import { normalizeProxyError, openAIErrorBody } from "./errors.js";
+import { normalizeProxyError, openAIErrorBody, OpenAIProxyError } from "./errors.js";
 import { jsonSchemaFromFormat, validateStructuredOutput } from "./schema.js";
 import {
   buildCodexResponsesRequestFromChatCompletions,
@@ -29,7 +30,26 @@ import {
   createOpenAIResponsesOutput,
   normalizeModelName,
 } from "./transform.js";
-import type { CodexEvent, OpenAIChatCompletionsRequest, OpenAIResponsesRequest } from "./types.js";
+import type { CodexEvent, CodexModelEntry, OpenAIChatCompletionsRequest, OpenAIResponsesRequest } from "./types.js";
+
+async function availableModels() {
+  const result = await fetchCodexModels();
+  return (result.models ?? [])
+    .filter((model) => model.visibility !== "hide" && model.supported_in_api !== false)
+    .sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0));
+}
+
+function modelReasoning(model: CodexModelEntry) {
+  return {
+    id: model.slug,
+    object: "model_reasoning",
+    default_reasoning_level: model.default_reasoning_level ?? null,
+    supported_reasoning_levels: (model.supported_reasoning_levels ?? []).map((level) => ({
+      effort: level.effort,
+      ...(level.description !== undefined ? { description: level.description } : {}),
+    })),
+  };
+}
 
 function writeSSE(reply: FastifyReply, data: unknown) {
   reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -75,6 +95,7 @@ export async function registerRoutes(app: FastifyInstance) {
       endpoints: {
         health: `${baseUrl}/health`,
         models: `${baseUrl}/v1/models`,
+        modelReasoning: `${baseUrl}/v1/models/reasoning`,
         responses: `${baseUrl}/v1/responses`,
         chatCompletions: `${baseUrl}/v1/chat/completions`,
       },
@@ -88,22 +109,35 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true }));
 
   app.get("/v1/models", async () => {
-    const result = await fetchCodexModels();
-    const items =
-      result.models
-        ?.filter((model) => model.visibility !== "hide" && model.supported_in_api !== false)
-        .sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0))
-        .map((model) => ({
-        id: model.slug,
-        object: "model",
-        created: 0,
-        owned_by: "chatgpt-codex",
-      })) ?? [];
+    const items = (await availableModels()).map((model) => ({
+      id: model.slug,
+      object: "model",
+      created: 0,
+      owned_by: "chatgpt-codex",
+    }));
 
     return {
       object: "list",
       data: items,
     };
+  });
+
+  app.get("/v1/models/reasoning", async () => ({
+    object: "list",
+    data: (await availableModels()).map(modelReasoning),
+  }));
+
+  app.get<{ Params: { model: string } }>("/v1/models/:model/reasoning", async (request) => {
+    const model = (await availableModels()).find((entry) => entry.slug === request.params.model);
+    if (!model) {
+      throw new OpenAIProxyError({
+        status: 404,
+        type: "invalid_request_error",
+        code: "model_not_found",
+        message: `Model unavailable: ${request.params.model}`,
+      });
+    }
+    return modelReasoning(model);
   });
 
   app.post<{ Body: OpenAIResponsesRequest }>("/v1/responses", async (request, reply) => {

@@ -12,6 +12,8 @@ Currently supported:
 
 - `GET /health`
 - `GET /v1/models`
+- `GET /v1/models/reasoning` (proxy extension)
+- `GET /v1/models/:model/reasoning` (proxy extension)
 - `POST /v1/responses`
 - `POST /v1/chat/completions`
 
@@ -291,6 +293,35 @@ console.log(result.output_text);
 
 ## Reasoning effort
 
+Query the accepted levels for every available model, or for one model:
+
+```bash
+curl http://127.0.0.1:8787/v1/models/reasoning
+curl http://127.0.0.1:8787/v1/models/gpt-5.6-luna/reasoning
+```
+
+The individual endpoint returns this shape (illustrative values):
+
+```json
+{
+  "id": "gpt-5.6-luna",
+  "object": "model_reasoning",
+  "default_reasoning_level": "medium",
+  "supported_reasoning_levels": [
+    { "effort": "low", "description": "Fast reasoning" },
+    { "effort": "medium" },
+    { "effort": "high" }
+  ]
+}
+```
+
+The list endpoint wraps these objects in `{ "object": "list", "data": [...] }`.
+Both endpoints use the same account-specific Codex catalog and five-minute cache as request
+validation. Descriptions are included when supplied by the catalog. Missing metadata appears as
+`default_reasoning_level: null` and `supported_reasoning_levels: []`; no levels are inferred.
+Unknown, hidden, or API-unavailable models return HTTP 404 with `model_not_found` on the individual
+endpoint. These routes are proxy extensions; `/v1/models` retains its OpenAI-compatible shape.
+
 Use the standard Responses API `reasoning.effort` field:
 
 ```ts
@@ -311,8 +342,8 @@ const result = await client.chat.completions.create({
 });
 ```
 
-Codex 0.144.1 exposes `low`, `medium`, `high`, `xhigh`, and `max` for
-`gpt-5.6-luna`. A fully non-reasoning mode is not available; use `low` for the lightest reasoning.
+Accepted levels vary by model and catalog version. Use the reasoning endpoints above to check
+the current values before setting `reasoning.effort` or `reasoning_effort`.
 
 ## iGovTI evidence evaluation
 

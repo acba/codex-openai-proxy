@@ -2,7 +2,7 @@
 
 ## Project goal
 
-This is a local OpenAI-compatible proxy service. Version 1.2.0:
+This is a local OpenAI-compatible proxy service. Version 2.1.0:
 
 - exposes OpenAI-style public endpoints;
 - reads `~/.codex/auth.json` internally;
@@ -14,6 +14,8 @@ Currently implemented endpoints:
 
 - `GET /health`
 - `GET /v1/models`
+- `GET /v1/models/reasoning` (proxy extension)
+- `GET /v1/models/:model/reasoning` (proxy extension)
 - `POST /v1/responses`
 - `POST /v1/chat/completions`
 

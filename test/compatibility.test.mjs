@@ -114,6 +114,86 @@ test("uses the detected version in catalog requests and refreshes it on configur
   assert.equal(requests, 2);
 });
 
+async function createCatalogTestServer(t, upstreamResponse) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-proxy-catalog-test-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const authFilePath = path.join(directory, "auth.json");
+  fs.writeFileSync(authFilePath, JSON.stringify({
+    tokens: { access_token: "test-token", account_id: "test-account" },
+  }));
+  t.mock.method(childProcess, "execFileSync", () => "codex-cli 0.162.1\n");
+  t.mock.method(globalThis, "fetch", upstreamResponse);
+  configureCodexClient({ authFilePath });
+  const app = await createProxyServer({ logger: false });
+  t.after(() => app.close());
+  return app;
+}
+
+test("lists reasoning capabilities from the same filtered, sorted model catalog", async (t) => {
+  let requests = 0;
+  const app = await createCatalogTestServer(t, async () => {
+    requests++;
+    return new Response(JSON.stringify({ models: [
+      { slug: "no-metadata", priority: 2, base_instructions: "private instructions" },
+      {
+        slug: "reasoner", priority: 1, default_reasoning_level: "high",
+        supported_reasoning_levels: [{ effort: "low", description: "Fast" }, { effort: "high" }],
+      },
+      { slug: "hidden", visibility: "hide" },
+      { slug: "not-api", supported_in_api: false },
+    ] }));
+  });
+  const response = await app.inject("/v1/models/reasoning");
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { object: "list", data: [
+    {
+      id: "reasoner", object: "model_reasoning", default_reasoning_level: "high",
+      supported_reasoning_levels: [{ effort: "low", description: "Fast" }, { effort: "high" }],
+    },
+    {
+      id: "no-metadata", object: "model_reasoning", default_reasoning_level: null,
+      supported_reasoning_levels: [],
+    },
+  ] });
+  const models = await app.inject("/v1/models");
+  assert.deepEqual(models.json(), { object: "list", data: ["reasoner", "no-metadata"].map((id) => ({
+    id, object: "model", created: 0, owned_by: "chatgpt-codex",
+  })) });
+  const single = await app.inject("/v1/models/reasoner/reasoning");
+  assert.equal(single.statusCode, 200);
+  assert.deepEqual(single.json(), response.json().data[0]);
+  assert.equal(requests, 1);
+  const root = await app.inject("/");
+  assert.equal(root.json().endpoints.modelReasoning, "http://localhost:80/v1/models/reasoning");
+  for (const model of ["missing", "hidden", "not-api"]) {
+    const missing = await app.inject(`/v1/models/${model}/reasoning`);
+    assert.equal(missing.statusCode, 404);
+    assert.equal(missing.json().error.type, "invalid_request_error");
+    assert.equal(missing.json().error.code, "model_not_found");
+  }
+});
+
+test("returns an empty reasoning list when the catalog has no models", async (t) => {
+  const app = await createCatalogTestServer(t, async () => new Response("{}"));
+  const response = await app.inject("/v1/models/reasoning");
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { object: "list", data: [] });
+});
+
+test("reasoning endpoints preserve catalog authentication and rate-limit errors", async (t) => {
+  for (const status of [401, 429]) {
+    await t.test(String(status), async (t) => {
+      const app = await createCatalogTestServer(t, async () => new Response("Unavailable", { status }));
+      for (const url of ["/v1/models/reasoning", "/v1/models/reasoner/reasoning"]) {
+        const response = await app.inject(url);
+        assert.equal(response.statusCode, status);
+        assert.equal(response.json().error.type, status === 401 ? "authentication_error" : "rate_limit_error");
+        assert.equal(response.json().error.code, status === 401 ? "model_catalog_unavailable" : "rate_limit_exceeded");
+      }
+    });
+  }
+});
+
 test("normalizes string Responses input and moves app instructions to a developer message", () => {
   const request = buildCodexResponsesRequestFromResponses({
     instructions: "Answer briefly.",
